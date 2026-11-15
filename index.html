@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pantry Keeper</title>
+<style>
+:root{--bg:#f5f6f2;--card:#fff;--ink:#1f2a24;--mut:#6b776f;--acc:#2f7d5b;--warn:#d98a00;--bad:#c0392b;--line:#e2e6df}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--acc);color:#fff;padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+header h1{font-size:1.2rem;margin:0;flex:1}
+nav{display:flex;gap:4px;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto;position:sticky;top:0;z-index:5}
+nav button{border:0;background:none;padding:12px 16px;font-size:.95rem;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+nav button.on{border-color:var(--acc);color:var(--acc);font-weight:600}
+main{max-width:980px;margin:0 auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.grow{flex:1;min-width:140px}
+input,select,textarea{padding:8px;border:1px solid #ccd3cb;border-radius:6px;font:inherit;background:#fff}
+button.b{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:8px 12px;cursor:pointer;font:inherit}
+button.b.s{background:#e9eee8;color:var(--ink)}button.b.d{background:var(--bad)}button.b.w{background:var(--warn)}
+header button.b.s{background:#fff}
+.item{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.item img{width:48px;height:48px;object-fit:contain;border-radius:6px;background:#f1f3ef}
+.item .nm{flex:1;min-width:150px}
+.tag{font-size:.72rem;padding:2px 7px;border-radius:99px;background:#e9eee8;color:var(--mut);margin-right:4px;display:inline-block}
+.tag.exp{background:#fde3df;color:var(--bad)}.tag.soon{background:#fff0d0;color:#8a5a00}.tag.low{background:#e0ecff;color:#1f4f9a}
+.ns{font-weight:700;color:#fff;padding:2px 8px;border-radius:5px;font-size:.75rem;margin-right:4px;display:inline-block}
+.ns-a{background:#038141}.ns-b{background:#85bb2f}.ns-c{background:#fecb02;color:#333}.ns-d{background:#ee8100}.ns-e{background:#e63e11}
+.nova{font-size:.72rem;padding:2px 7px;border-radius:5px;border:1px solid #bbb;margin-right:4px;display:inline-block}.nova.n4{border-color:var(--bad);color:var(--bad)}
+.qty{display:flex;align-items:center;gap:4px}.qty button{width:30px;height:30px;border-radius:50%;border:1px solid #ccd3cb;background:#fff;cursor:pointer;font-size:1rem}
+.qty span{min-width:64px;text-align:center}
+.mut{color:var(--mut);font-size:.85rem}h2{font-size:1.05rem;margin:14px 0 8px}
+dialog{border:0;border-radius:12px;padding:16px;max-width:520px;width:94%}dialog::backdrop{background:#0006}
+label{display:block;font-size:.8rem;color:var(--mut);margin:8px 0 2px}dialog input,dialog select,dialog textarea{width:100%}
+dialog input[type=checkbox]{width:auto}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:8px;display:none;z-index:99;max-width:90%}
+.done{text-decoration:line-through;color:var(--mut)}
+video,#reader{width:100%;border-radius:8px;background:#000;max-height:50vh}
+.seg button{border-radius:0}.seg button:first-child{border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0}
+</style></head><body>
+<header><h1>🥫 Pantry Keeper</h1>
+<input id="q" class="grow" placeholder="Search everything…" style="max-width:260px">
+<button class="b s" onclick="openScan('add')">📷 Scan</button>
+<button class="b s" onclick="openItem()">+ Add</button></header>
+<nav id="nav"></nav><main id="main"></main>
+<dialog id="dlg"></dialog><dialog id="scan"></dialog><div id="toast"></div>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+const KEY='pantryKeeperV1';
+const DEF={
+ locations:['Fridge','Freezer','Storage'],
+ categories:[
+  {n:'Dairy & eggs',days:{Fridge:10,Freezer:90,Storage:0},unit:'pcs'},
+  {n:'Meat & fish',days:{Fridge:3,Freezer:180,Storage:0},unit:'pack'},
+  {n:'Vegetables',days:{Fridge:7,Freezer:240,Storage:5},unit:'pcs'},
+  {n:'Fruit',days:{Fridge:7,Freezer:240,Storage:5},unit:'pcs'},
+  {n:'Leftovers / meals',days:{Fridge:3,Freezer:90,Storage:0},unit:'box'},
+  {n:'Bread & bakery',days:{Fridge:5,Freezer:90,Storage:3},unit:'loaf'},
+  {n:'Dry goods & tins',days:{Fridge:0,Freezer:0,Storage:365},unit:'pack'},
+  {n:'Sauces & condiments',days:{Fridge:60,Freezer:0,Storage:180},unit:'jar'},
+  {n:'Drinks',days:{Fridge:30,Freezer:0,Storage:180},unit:'bottle'},
+  {n:'Other',days:{Fridge:0,Freezer:0,Storage:0},unit:'pcs'}],
+ units:['pcs','pack','kg','g','L','ml','tin','jar','bottle','loaf','box','bag'],
+ items:[],shop:[],log:[],products:{},
+ settings:{clientId:'',listName:'Shopping',warnDays:3,autoPush:true,nextId:1}
+};
+let S=load();let view='stock',filterLoc='All',sortBy='expiry',tok=null,tokExp=0,curPre={};
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s)return Object.assign(structuredClone(DEF),s,{settings:Object.assign({},DEF.settings,s.settings)})}catch(e){}return structuredClone(DEF)}
+function save(){localStorage.setItem(KEY,JSON.stringify(S))}
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',3200)}
+const today=()=>new Date(new Date().toDateString());
+function daysLeft(i){if(!i.expiry)return null;return Math.round((new Date(i.expiry)-today())/864e5)}
+function addDays(n){const d=today();d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
+function cat(n){return S.categories.find(c=>c.n===n)||S.categories[S.categories.length-1]}
+
+const TABS=[['stock','Stock'],['use','Use first'],['shop','Shopping list'],['meals','Meal ideas'],['manage','Settings']];
+function render(){
+ $('#nav').innerHTML=TABS.map(([k,l])=>{let n='';if(k==='use')n=` (${useFirst().length})`;if(k==='shop')n=` (${S.shop.filter(x=>!x.done).length})`;
+  return `<button class="${view===k?'on':''}" onclick="view='${k}';render()">${l}${n}</button>`}).join('');
+ ({stock:vStock,use:vUse,shop:vShop,meals:vMeals,manage:vManage})[view]();
+}
+function useFirst(){return S.items.filter(i=>{const d=daysLeft(i);return d!==null&&d<=S.settings.warnDays}).sort((a,b)=>daysLeft(a)-daysLeft(b))}
+function badges(i){let t='';if(i.nutri)t+=`<span class="ns ns-${i.nutri}" title="Nutri-Score">Nutri ${i.nutri.toUpperCase()}</span>`;
+ if(i.nova)t+=`<span class="nova ${i.nova==4?'n4':''}" title="NOVA processing group (4 = ultra-processed)">NOVA ${i.nova}</span>`;return t}
+function tags(i){let t=badges(i)+`<span class="tag">${esc(i.location)}</span><span class="tag">${esc(i.category)}</span>`;
+ const d=daysLeft(i);if(d!==null)t+=d<0?`<span class="tag exp">expired ${-d}d ago</span>`:d<=S.settings.warnDays?`<span class="tag soon">${d===0?'today':d+'d left'}</span>`:`<span class="tag">${i.expiry}</span>`;
+ if(i.min>0&&i.qty<=i.min&&i.qty>0)t+=`<span class="tag low">low (min ${i.min})</span>`;
+ if(i.allergens)t+=`<br><span class="mut">Allergens: ${esc(i.allergens)}</span>`;
+ if(i.notes)t+=`<span class="mut"> ${esc(i.notes)}</span>`;return t}
+function itemRow(i){return `<div class="card item">${i.img?`<img src="${esc(i.img)}" loading="lazy">`:''}<div class="nm"><b>${esc(i.name)}</b>${i.brand?` <span class="mut">${esc(i.brand)}</span>`:''}<br>${tags(i)}</div>
+ <div class="qty"><button onclick="adj(${i.id},-1)">−</button><span>${+i.qty.toFixed(2)} ${esc(i.unit)}</span><button onclick="adj(${i.id},1)">+</button></div>
+ <button class="b s" onclick="openItem(${i.id})">Edit</button><button class="b w" onclick="finish(${i.id})">Finished</button></div>`}
+function vStock(){
+ const q=$('#q').value.toLowerCase();
+ let h=`<div class="row" style="margin-bottom:10px">${['All',...S.locations].map(l=>`<button class="b ${filterLoc===l?'':'s'}" onclick="filterLoc='${esc(l)}';render()">${esc(l)} (${S.items.filter(i=>l==='All'||i.location===l).length})</button>`).join('')}
+ <select onchange="sortBy=this.value;render()" style="margin-left:auto"><option value="expiry" ${sortBy=='expiry'?'selected':''}>Sort: expiry</option><option value="health" ${sortBy=='health'?'selected':''}>Sort: healthiest first</option></select></div>`;
+ const list=S.items.filter(i=>(filterLoc==='All'||i.location===filterLoc)&&(!q||(i.name+i.brand+i.category+i.notes+i.barcode).toLowerCase().includes(q)));
+ const g={a:0,b:0,c:0,d:0,e:0};list.forEach(i=>{if(i.nutri)g[i.nutri]++});const rated=Object.values(g).reduce((a,b)=>a+b,0);
+ if(rated)h+=`<div class="card row"><b>Nutri-Score mix</b>${Object.entries(g).filter(e=>e[1]).map(([k,v])=>`<span class="ns ns-${k}">${k.toUpperCase()} × ${v}</span>`).join('')}<span class="mut">${rated} of ${list.length} items rated · ${list.filter(i=>i.nova==4).length} ultra-processed</span></div>`;
+ if(!list.length)h+='<div class="card mut">Nothing here yet. Press “📷 Scan” or “+ Add”.</div>';
+ const key=i=>sortBy==='health'?(i.nutri?i.nutri.charCodeAt(0):200):(daysLeft(i)??9999);
+ if(sortBy==='health')h+=list.sort((a,b)=>key(a)-key(b)).map(itemRow).join('');
+ else{const by={};list.forEach(i=>(by[i.category]??=[]).push(i));
+  Object.keys(by).sort().forEach(c=>{h+=`<h2>${esc(c)}</h2>`+by[c].sort((a,b)=>key(a)-key(b)).map(itemRow).join('')})}
+ $('#main').innerHTML=h}
+function vUse(){const l=useFirst();$('#main').innerHTML=`<h2>Expired or expiring within ${S.settings.warnDays} days</h2>`+(l.length?l.map(itemRow).join(''):'<div class="card mut">All good. Nothing is close to its date.</div>')}
+function vShop(){
+ const open=S.shop.filter(x=>!x.done),done=S.shop.filter(x=>x.done);
+ $('#main').innerHTML=`<div class="card row"><input id="sn" class="grow" placeholder="Add to shopping list manually"><button class="b" onclick="addShop($('#sn').value,'manual');$('#sn').value=''">Add</button>
+ <button class="b s" onclick="pushAll()">Sync to Google Tasks</button></div>
+ <div class="mut" style="margin-bottom:8px">Google: ${tok&&Date.now()<tokExp?'connected':'not connected'} · list “${esc(S.settings.listName)}”</div>
+ ${open.map(x=>`<div class="card row"><input type="checkbox" onchange="tick(${x.id})"><span class="grow">${esc(x.name)} <span class="mut">${esc(x.why||'')} ${x.gid?'· in Google':''}</span></span><button class="b s" onclick="rmShop(${x.id})">✕</button></div>`).join('')||'<div class="card mut">List is empty.</div>'}
+ ${done.length?`<h2>Bought</h2>`+done.map(x=>`<div class="card row"><span class="grow done">${esc(x.name)}</span><button class="b s" onclick="restock(${x.id})">Restock…</button><button class="b s" onclick="rmShop(${x.id})">✕</button></div>`).join(''):''}`}
+function vMeals(){
+ const u=useFirst(),names=u.map(i=>i.name);
+ const q=names.length?encodeURIComponent('recipe using '+names.slice(0,4).join(' and ')):'';
+ $('#main').innerHTML=`<h2>Cook with what is about to expire</h2><div class="card">${names.length?`<p>${names.map(esc).join(', ')}</p><a style="display:inline-block;padding:8px 12px;border-radius:6px;background:var(--acc);color:#fff;text-decoration:none" target="_blank" href="https://www.google.com/search?q=${q}">Search recipes for these</a>`:'<span class="mut">Nothing urgent.</span>'}</div>
+ <h2>Freezer items (oldest first)</h2>`+(S.items.filter(i=>i.location==='Freezer').sort((a,b)=>(a.added||'').localeCompare(b.added||'')).slice(0,8).map(i=>`<div class="card">${esc(i.name)} <span class="mut">added ${esc(i.added||'?')}</span></div>`).join('')||'<div class="card mut">Freezer is empty.</div>')}
+function vManage(){
+ const s=S.settings;
+ $('#main').innerHTML=`<div class="card"><h2>Google shopping list (Google Tasks)</h2>
+ <p class="mut">Finished items are added to a Google Tasks list. Create an OAuth Web client ID in Google Cloud (Tasks API enabled), add this page's address as an authorised JavaScript origin, and paste the ID here.</p>
+ <label>OAuth client ID</label><input id="cid" value="${esc(s.clientId)}" style="width:100%">
+ <div class="grid2"><div><label>Google Tasks list name</label><input id="ln" value="${esc(s.listName)}"></div><div><label>“Use first” warning (days)</label><input id="wd" type="number" value="${s.warnDays}"></div></div>
+ <label><input type="checkbox" id="ap" ${s.autoPush?'checked':''}> Push to Google automatically when items finish</label>
+ <div class="row" style="margin-top:8px"><button class="b" onclick="saveSet()">Save</button><button class="b s" onclick="gAuth().then(()=>toast('Connected')).catch(e=>toast(e.message))">Connect Google</button></div></div>
+ <div class="card"><h2>Locations</h2><div class="row">${S.locations.map(l=>`<span class="tag">${esc(l)} <a href="#" onclick="delLoc('${esc(l)}');return false">✕</a></span>`).join('')}</div>
+ <div class="row" style="margin-top:8px"><input id="nl" placeholder="e.g. Garage fridge, Cellar"><button class="b" onclick="addLoc()">Add location</button></div></div>
+ <div class="card"><h2>Food types &amp; default shelf life</h2>
+ ${S.categories.map((c,k)=>`<div class="row"><b class="grow">${esc(c.n)}</b><span class="mut">${Object.entries(c.days).filter(e=>e[1]).map(e=>e[0]+' '+e[1]+'d').join(' · ')||'no default'}</span><button class="b s" onclick="delCat(${k})">✕</button></div>`).join('')}
+ <div class="row" style="margin-top:8px"><input id="nc" placeholder="New type, e.g. Baby food" class="grow"><select id="cu">${S.units.map(u=>`<option>${u}</option>`).join('')}</select><input id="cd" type="number" placeholder="Default days" style="width:120px"><button class="b" onclick="addCat()">Add type</button></div></div>
+ <div class="card"><h2>Backup &amp; share</h2><p class="mut">Data lives in this browser (${Object.keys(S.products).length} barcodes remembered). Export and import to move it between devices.</p>
+ <div class="row"><button class="b s" onclick="exp()">Export JSON</button><input type="file" id="imp" accept=".json" onchange="imp(event)"><button class="b d" onclick="if(confirm('Delete all data?')){localStorage.removeItem(KEY);S=load();render()}">Reset</button></div></div>`}
+function saveSet(){Object.assign(S.settings,{clientId:$('#cid').value.trim(),listName:$('#ln').value.trim()||'Shopping',warnDays:+$('#wd').value||3,autoPush:$('#ap').checked});save();toast('Saved')}
+function addLoc(){const v=$('#nl').value.trim();if(v&&!S.locations.includes(v)){S.locations.push(v);save();render()}}
+function delLoc(l){if(S.items.some(i=>i.location===l))return toast('Move items out first');S.locations=S.locations.filter(x=>x!==l);save();render()}
+function addCat(){const n=$('#nc').value.trim();if(!n)return;const d=+$('#cd').value||0;const days={};S.locations.forEach(l=>days[l]=d);S.categories.splice(S.categories.length-1,0,{n,unit:$('#cu').value,days});save();render()}
+function delCat(k){if(S.categories[k].n==='Other')return;const n=S.categories[k].n;S.items.forEach(i=>{if(i.category===n)i.category='Other'});S.categories.splice(k,1);save();render()}
+
+/* ---------- Barcode scanning + Open Food Facts ---------- */
+const OFF='https://world.openfoodfacts.org/api/v2/product/';
+const FIELDS='product_name,brands,quantity,nutriscore_grade,nova_group,ecoscore_grade,categories_tags,allergens_tags,image_front_small_url';
+const CATMAP=[['Dairy & eggs',/milk|cheese|yogh?urt|dairies|eggs|butter|cream/],['Meat & fish',/meat|fish|seafood|poultry|sausage|ham/],['Vegetables',/vegetable/],['Fruit',/fruit/],['Bread & bakery',/bread|bakery|pastr/],['Drinks',/beverage|drink|water|juice|soda/],['Sauces & condiments',/sauce|condiment|spread|ketchup|mayonnaise/],['Dry goods & tins',/cereal|pasta|rice|canned|legume|snack|biscuit|flour|noodle|chocolate/]];
+function guessCat(tags){const s=(tags||[]).join(' ').toLowerCase();for(const[n,re]of CATMAP)if(re.test(s)&&S.categories.some(c=>c.n===n))return n;return 'Other'}
+async function lookup(code){
+ if(S.products[code])return S.products[code];
+ const r=await fetch(`${OFF}${code}.json?fields=${FIELDS}`);const j=await r.json();
+ if(j.status!==1||!j.product||!j.product.product_name)return null;
+ const p=j.product,g=x=>/^[a-e]$/.test(x||'')?x:'';
+ const o={barcode:code,name:p.product_name,brand:(p.brands||'').split(',')[0],pack:p.quantity||'',nutri:g(p.nutriscore_grade),nova:p.nova_group||'',eco:g(p.ecoscore_grade),img:p.image_front_small_url||'',
+  allergens:(p.allergens_tags||[]).map(a=>a.replace(/^..:/,'')).join(', '),category:guessCat(p.categories_tags)};
+ S.products[code]=o;save();return o}
+let stream=null,timer=null,h5=null,scanMode='add',lastCode='',lastT=0,scanNext=false;
+function openScan(mode){scanMode=mode||'add';scanNext=false;
+ $('#scan').innerHTML=`<h2>Scan barcode</h2><div class="row seg" style="margin-bottom:8px">
+ <button class="b ${scanMode=='add'?'':'s'}" onclick="openScan('add')">Add to stock</button><button class="b ${scanMode=='use'?'':'s'}" onclick="openScan('use')">Use up one</button></div>
+ <div id="cam"></div><p class="mut" id="sst">Starting camera… (needs HTTPS and camera permission)</p>
+ <label>Or type the number under the barcode</label><div class="row"><input id="man" inputmode="numeric" class="grow" placeholder="e.g. 5000127281158"><button class="b" onclick="onCode($('#man').value.trim(),true)">Look up</button></div>
+ <div class="row" style="margin-top:12px"><button class="b s" onclick="$('#scan').close()">Close</button></div>`;
+ if(!$('#scan').open)$('#scan').showModal();startScan()}
+$('#scan').addEventListener('close',stopScan);
+async function startScan(){stopScan();const cam=$('#cam');
+ try{
+  if('BarcodeDetector' in window){
+   const det=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});
+   cam.innerHTML='<video id="vid" playsinline muted></video>';
+   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
+   const v=$('#vid');v.srcObject=stream;await v.play();$('#sst').textContent='Point at a barcode';
+   timer=setInterval(async()=>{try{const r=await det.detect(v);if(r.length)onCode(r[0].rawValue)}catch(e){}},300);
+  }else{
+   if(!window.Html5Qrcode)await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';s.onload=res;s.onerror=()=>rej(new Error('Scanner library failed to load'));document.head.appendChild(s)});
+   cam.innerHTML='<div id="reader"></div>';const F=Html5QrcodeSupportedFormats;
+   h5=new Html5Qrcode('reader',{formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E],verbose:false});
+   await h5.start({facingMode:'environment'},{fps:10,qrbox:{width:260,height:140}},t=>onCode(t),()=>{});$('#sst').textContent='Point at a barcode';
+  }
+ }catch(e){$('#sst').textContent='Camera unavailable: '+e.message+'. Type the barcode number instead.'}}
+function stopScan(){clearInterval(timer);timer=null;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+ if(h5){const h=h5;h5=null;h.stop().then(()=>h.clear()).catch(()=>{})}}
+async function onCode(code,manual){
+ if(!code)return;if(!manual&&code===lastCode&&Date.now()-lastT<3000)return;lastCode=code;lastT=Date.now();
+ const have=S.items.find(i=>i.barcode===code);
+ if(scanMode==='use'){if(have){adj(have.id,-1);toast('Used one: '+have.name)}else toast('Not in stock: '+code);return}
+ if(have){have.qty+=1;save();render();toast(`${have.name}: now ${have.qty} ${have.unit}`);return}
+ $('#sst').textContent='Looking up '+code+'…';
+ let p=null;try{p=await lookup(code)}catch(e){toast('Lookup failed (offline?)')}
+ scanNext=true;$('#scan').close();
+ if(p){const c=cat(p.category);openItem(0,{name:p.name,brand:p.brand,barcode:code,nutri:p.nutri,nova:p.nova,img:p.img,allergens:p.allergens,category:p.category,unit:c.unit,notes:p.pack?('Pack: '+p.pack):''})}
+ else{toast('Not in Open Food Facts. Enter the name once and I will remember it.');openItem(0,{barcode:code,name:''})}}
+
+/* ---------- Item form ---------- */
+function openItem(id,pre){
+ const ex=S.items.find(x=>x.id===id);
+ const i=ex||Object.assign({name:'',qty:1,unit:'pcs',location:S.locations[0],category:S.categories[0].n,expiry:'',min:0,notes:'',auto:true},pre||{});
+ curPre=ex?{}:{barcode:i.barcode||'',brand:i.brand||'',nutri:i.nutri||'',nova:i.nova||'',img:i.img||'',allergens:i.allergens||''};
+ if(!pre&&!ex)scanNext=false;
+ const hdr=i.barcode?`<div class="row">${i.img?`<img src="${esc(i.img)}" style="width:56px">`:''}<div>${badges(i)}<div class="mut">${esc(i.brand||'')} · barcode ${esc(i.barcode)}</div></div></div>`:'';
+ $('#dlg').innerHTML=`<h2>${id?'Edit':'Add'} item</h2>${hdr}<form method="dialog" onsubmit="return false">
+ <label>Name</label><input id="f_n" value="${esc(i.name)}" list="known">
+ <datalist id="known">${[...new Set(S.items.map(x=>x.name).concat(S.shop.map(x=>x.name)))].map(n=>`<option>${esc(n)}</option>`).join('')}</datalist>
+ <div class="grid2"><div><label>Location</label><select id="f_l">${S.locations.map(l=>`<option ${l===i.location?'selected':''}>${esc(l)}</option>`).join('')}</select></div>
+ <div><label>Food type</label><select id="f_c">${S.categories.map(c=>`<option ${c.n===i.category?'selected':''}>${esc(c.n)}</option>`).join('')}</select></div>
+ <div><label>Quantity</label><input id="f_q" type="number" step="any" value="${i.qty}"></div>
+ <div><label>Unit</label><select id="f_u">${S.units.map(u=>`<option ${u===i.unit?'selected':''}>${u}</option>`).join('')}</select></div>
+ <div><label>Best before / use by</label><input id="f_e" type="date" value="${i.expiry||''}"></div>
+ <div><label>Restock when ≤ (0 = only when finished)</label><input id="f_m" type="number" step="any" value="${i.min}"></div></div>
+ <div class="mut" id="hint"></div>
+ <label>Notes</label><input id="f_t" value="${esc(i.notes)}">
+ <label><input type="checkbox" id="f_a" ${i.auto!==false?'checked':''}> Add to shopping list when finished</label>
+ <div class="row" style="margin-top:12px"><button class="b" onclick="saveItem(${id||0})">Save${scanNext?' &amp; scan next':''}</button><button class="b s" onclick="scanNext=false;$('#dlg').close()">Cancel</button>${id?`<button class="b d" onclick="delItem(${id})">Delete</button>`:''}</div></form>`;
+ const sug=()=>{const c=cat($('#f_c').value),l=$('#f_l').value,d=c.days[l];if(!id){$('#f_e').value=d?addDays(d):'';$('#hint').textContent=d?`Suggested ${d} days for ${c.n} in ${l}. Check the printed date.`:'';if(!(pre&&pre.unit&&pre.category===c.n))$('#f_u').value=c.unit}};
+ $('#f_c').onchange=sug;$('#f_l').onchange=sug;if(!id)sug();$('#dlg').showModal()}
+function saveItem(id){
+ const n=$('#f_n').value.trim();if(!n)return toast('Name needed');
+ const o={name:n,location:$('#f_l').value,category:$('#f_c').value,qty:+$('#f_q').value||0,unit:$('#f_u').value,expiry:$('#f_e').value,min:+$('#f_m').value||0,notes:$('#f_t').value,auto:$('#f_a').checked};
+ let it;if(id){it=S.items.find(x=>x.id===id);Object.assign(it,o)}else{it={...curPre,...o,id:S.settings.nextId++,added:addDays(0)};S.items.push(it);
+  if(it.barcode&&!S.products[it.barcode])S.products[it.barcode]={barcode:it.barcode,name:n,category:o.category,nutri:'',nova:'',img:'',allergens:'',brand:''}}
+ $('#dlg').close();checkLow(it);save();render();if(scanNext&&!id)setTimeout(()=>openScan(scanMode),150)}
+function delItem(id){S.items=S.items.filter(x=>x.id!==id);scanNext=false;$('#dlg').close();save();render()}
+function adj(id,d){const i=S.items.find(x=>x.id===id);const step=['kg','L'].includes(i.unit)?0.5:['g','ml'].includes(i.unit)?100:1;i.qty=Math.max(0,+(i.qty+d*step).toFixed(2));
+ if(i.qty===0)finish(id);else{checkLow(i);save();render()}}
+function finish(id){const i=S.items.find(x=>x.id===id);if(!i)return;
+ S.log.push({name:i.name,date:addDays(0),action:'finished'});
+ if(i.auto!==false)addShop(i.name,'finished from '+i.location,true);
+ S.items=S.items.filter(x=>x.id!==id);save();render();toast(i.name+' finished'+(i.auto!==false?' → shopping list':''))}
+function checkLow(i){if(i&&i.auto!==false&&i.min>0&&i.qty<=i.min&&i.qty>0)addShop(i.name,`low (${i.qty} ${i.unit} left)`,true)}
+function addShop(name,why,auto){name=name.trim();if(!name)return;
+ if(S.shop.some(x=>!x.done&&x.name.toLowerCase()===name.toLowerCase()))return;
+ const x={id:S.settings.nextId++,name,why,done:false};S.shop.push(x);save();render();
+ if(S.settings.autoPush&&S.settings.clientId)pushOne(x).catch(e=>toast('Google sync failed: '+e.message))}
+function tick(id){const x=S.shop.find(s=>s.id===id);x.done=true;save();render();if(x.gid&&tok)gApi('PATCH',`/lists/${x.listId}/tasks/${x.gid}`,{status:'completed'}).catch(()=>{})}
+function rmShop(id){S.shop=S.shop.filter(x=>x.id!==id);save();render()}
+function restock(id){const x=S.shop.find(s=>s.id===id);rmShop(id);openItem(0,{name:x.name})}
+
+/* ---------- Google Tasks ---------- */
+function gAuth(){return new Promise((res,rej)=>{
+ if(tok&&Date.now()<tokExp)return res();
+ if(!S.settings.clientId)return rej(new Error('Add your OAuth client ID in Settings'));
+ if(!window.google)return rej(new Error('Google script not loaded (offline?)'));
+ google.accounts.oauth2.initTokenClient({client_id:S.settings.clientId,scope:'https://www.googleapis.com/auth/tasks',
+  callback:r=>{if(r.error)return rej(new Error(r.error));tok=r.access_token;tokExp=Date.now()+(r.expires_in-60)*1000;res()}}).requestAccessToken()})}
+async function gApi(method,path,body){await gAuth();
+ const r=await fetch('https://tasks.googleapis.com/tasks/v1'+path,{method,headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+ if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error?.message||r.status);return r.status===204?{}:r.json()}
+let listId=null;
+async function getList(){if(listId)return listId;const l=await gApi('GET','/users/@me/lists?maxResults=100');
+ let f=(l.items||[]).find(x=>x.title.toLowerCase()===S.settings.listName.toLowerCase());
+ if(!f)f=await gApi('POST','/users/@me/lists',{title:S.settings.listName});return listId=f.id}
+async function pushOne(x){if(x.gid)return;const id=await getList();
+ const ex=await gApi('GET',`/lists/${id}/tasks?showCompleted=false&maxResults=100`);
+ const m=(ex.items||[]).find(t=>t.title.toLowerCase()===x.name.toLowerCase());
+ const t=m||await gApi('POST',`/lists/${id}/tasks`,{title:x.name,notes:x.why||''});
+ x.gid=t.id;x.listId=id;save();render()}
+async function pushAll(){try{for(const x of S.shop.filter(s=>!s.done&&!s.gid))await pushOne(x);toast('Synced')}catch(e){toast(e.message)}}
+function exp(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));a.download='pantry-'+addDays(0)+'.json';a.click()}
+function imp(e){const f=e.target.files[0];if(!f)return;f.text().then(t=>{S=Object.assign(structuredClone(DEF),JSON.parse(t));save();render();toast('Imported')})}
+$('#q').oninput=()=>{view='stock';render()};
+render();
+</script></body></html>
